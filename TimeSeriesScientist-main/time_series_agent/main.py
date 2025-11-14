@@ -23,11 +23,12 @@ if __name__ == "__main__":
     config["num_slices"] = 25
     config["input_length"] = 512
     config["horizon"] = 96
-    config["data_path"] = "../dataset/ETT-small/ETTh1.csv"
+    config["data_path"] = "../dataset/ETTh1.csv"
     config["debug"] = False
     config["verbose"] = False
     config["date_column"] = "date"
     config["value_column"] = "OT"
+    config["output_dir"] = "results"
 
     # 2. Check for API key in environment
     if not os.environ.get("OPENAI_API_KEY"):

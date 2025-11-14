@@ -49,7 +49,8 @@ class TimeSeriesAgentGraph:
         }
 
     def _preprocess_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        result = self.preprocess_agent.run(state["validation_data"])
+        output_dir = self.config.get("output_dir", "results")
+        result = self.preprocess_agent.run(state["validation_data"], output_dir=output_dir)
         state["preprocessed_data"] = result if isinstance(result, pd.DataFrame) else result.get("cleaned_data", state["validation_data"])
         state["preprocess_result"] = result
         return state
@@ -88,7 +89,10 @@ class TimeSeriesAgentGraph:
         result = self.forecast_agent.run(
             state["selected_models"], 
             state["best_hyperparameters"], 
-            state["test_data"]
+            state["validation_data"],
+            state["test_data"],
+            output_dir=self.config.get("output_dir", "results"),
+            validation_metrics=state.get("validation_metrics")
         )
         
         # print(f"Forecast node: Result keys: {list(result.keys()) if result else 'None'}")

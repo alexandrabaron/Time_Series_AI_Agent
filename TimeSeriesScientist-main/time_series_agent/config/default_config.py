@@ -120,7 +120,7 @@ PATH_CONFIG = {
 DEFAULT_CONFIG = {
     # Basic configuration
     "data_path": None,  # need to be specified by user
-    "output_dir": "results_ETTh2_720",
+    "output_dir": "results",
     
     # LLM configuration
     "llm_provider": "openai",

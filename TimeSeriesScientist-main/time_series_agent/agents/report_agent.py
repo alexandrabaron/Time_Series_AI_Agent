@@ -15,7 +15,7 @@ from agents.memory import ExperimentMemory
 from utils.visualization_utils import TimeSeriesVisualizer, ReportVisualizer
 from utils.file_utils import FileSaver, FileManager
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 

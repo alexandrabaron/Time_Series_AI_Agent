@@ -460,6 +460,15 @@ class AnalysisAgentWrapper:
                 recommendations
             )
             
+            # Generate visualizations
+            visualizations = self._generate_visualizations(
+                data,
+                trend_results,
+                seasonality_results,
+                decomposition_results,
+                acf_pacf_results
+            )
+            
             response = {
                 "status": "success",
                 "summary": summary,
@@ -471,7 +480,8 @@ class AnalysisAgentWrapper:
                     "decomposition": decomposition_results,
                     "statistics": stats_results
                 },
-                "recommendations": recommendations
+                "recommendations": recommendations,
+                "visualizations": visualizations
             }
             
             logger.info("AnalysisAgentWrapper: Analysis complete")
@@ -810,6 +820,83 @@ class AnalysisAgentWrapper:
         recommendations.sort(key=lambda x: x['priority'])
         
         return recommendations[:5]  # Top 5
+    
+    def _generate_visualizations(
+        self,
+        data: pd.DataFrame,
+        trend: Dict,
+        seasonality: Dict,
+        decomposition: Dict,
+        acf_pacf: Dict
+    ) -> Dict[str, str]:
+        """
+        Generate analysis visualizations and save them to disk.
+        
+        Returns:
+            Dictionary mapping visualization names to file paths
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        from pathlib import Path
+        
+        # Create output directory
+        output_dir = Path(self.config.get('output_dir', 'results')) / 'analysis_visualizations'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        visualizations = {}
+        
+        try:
+            # 1. Time Series Overview
+            fig, ax = plt.subplots(figsize=(12, 4))
+            ax.plot(data.index, data['value'], linewidth=1, color='steelblue')
+            ax.set_title('📊 Vue d\'ensemble de la Série Temporelle', fontsize=14, fontweight='bold')
+            ax.set_xlabel('Temps')
+            ax.set_ylabel('Valeur')
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            
+            overview_path = output_dir / 'overview.png'
+            plt.savefig(overview_path, dpi=100, bbox_inches='tight')
+            plt.close()
+            visualizations['Vue d\'ensemble'] = str(overview_path)
+            
+            # 2. Decomposition (if available)
+            if decomposition.get('decomposed', False):
+                fig, axes = plt.subplots(4, 1, figsize=(12, 10))
+                
+                # Observed
+                axes[0].plot(decomposition['observed'], linewidth=1, color='steelblue')
+                axes[0].set_title('Série Observée', fontweight='bold')
+                axes[0].grid(True, alpha=0.3)
+                
+                # Trend
+                axes[1].plot(decomposition['trend'], linewidth=1, color='orange')
+                axes[1].set_title('Tendance', fontweight='bold')
+                axes[1].grid(True, alpha=0.3)
+                
+                # Seasonal
+                axes[2].plot(decomposition['seasonal'], linewidth=1, color='green')
+                axes[2].set_title('Composante Saisonnière', fontweight='bold')
+                axes[2].grid(True, alpha=0.3)
+                
+                # Residual
+                axes[3].plot(decomposition['residual'], linewidth=1, color='red')
+                axes[3].set_title('Résidus', fontweight='bold')
+                axes[3].grid(True, alpha=0.3)
+                
+                plt.tight_layout()
+                decomp_path = output_dir / 'decomposition.png'
+                plt.savefig(decomp_path, dpi=100, bbox_inches='tight')
+                plt.close()
+                visualizations['Décomposition'] = str(decomp_path)
+            
+            logger.info(f"Generated {len(visualizations)} visualizations")
+            
+        except Exception as e:
+            logger.warning(f"Error generating visualizations: {e}")
+        
+        return visualizations
     
     def _create_summary(
         self,

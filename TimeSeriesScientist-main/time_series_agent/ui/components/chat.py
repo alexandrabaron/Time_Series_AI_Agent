@@ -26,7 +26,27 @@ def display_chat_history():
             st.markdown(content)
             
             # Display visualizations if present in metadata
-            if 'visualization' in metadata:
+            if 'visualizations' in metadata:
+                viz_dict = metadata['visualizations']
+                if isinstance(viz_dict, dict) and viz_dict:
+                    st.markdown("### 📊 Visualisations")
+                    # Display visualizations in a grid
+                    num_vizs = len(viz_dict)
+                    if num_vizs == 1:
+                        cols = [st]
+                    elif num_vizs == 2:
+                        cols = st.columns(2)
+                    else:
+                        # For 3+ visualizations, use 2 columns
+                        cols = st.columns(2)
+                    
+                    for idx, (viz_name, viz_path) in enumerate(viz_dict.items()):
+                        col_idx = idx % len(cols)
+                        with cols[col_idx]:
+                            st.image(str(viz_path), caption=viz_name, use_container_width=True)
+            
+            # Display single visualization (legacy support)
+            elif 'visualization' in metadata:
                 st.image(metadata['visualization'])
             
             # Display data tables if present in metadata

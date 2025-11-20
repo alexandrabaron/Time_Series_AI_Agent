@@ -231,9 +231,25 @@ def main():
                 
                 elif current_step == 'preprocessing_complete':
                     st.success("✅ Prétraitement terminé")
-                    if st.button("📊 2. Lancer l'Analyse", type="primary", use_container_width=True):
-                        add_user_message("Lancer l'analyse")
-                        result = st.session_state.orchestrator.handle_command('start_analysis')
+                    if st.button("📊 2. Lancer l'Analyse Statistique", type="primary", use_container_width=True):
+                        add_user_message("Lancer l'analyse statistique")
+                        
+                        with st.spinner("Analyse statistique en cours..."):
+                            result = st.session_state.orchestrator.handle_command('start_analysis')
+                        
+                        # Prepare metadata with visualizations
+                        metadata = {}
+                        if 'visualizations' in result and result['visualizations']:
+                            metadata['visualizations'] = result['visualizations']
+                        
+                        add_assistant_message(result['message'], metadata=metadata)
+                        st.rerun()
+                
+                elif current_step == 'analysis_complete':
+                    st.success("✅ Analyse terminée")
+                    if st.button("🎯 3. Sélection de Modèles", type="primary", use_container_width=True):
+                        add_user_message("Lancer la sélection de modèles")
+                        result = st.session_state.orchestrator.handle_command('start_validation')
                         add_assistant_message(result['message'])
                         st.rerun()
         
@@ -241,6 +257,41 @@ def main():
         
         # Configuration section
         st.header("⚙️ Configuration")
+        
+        # Seasonal period configuration
+        st.subheader("📊 Analyse")
+        
+        seasonal_options = {
+            'Détection automatique': 'auto',
+            '7 (Hebdomadaire)': 7,
+            '12 (Mensuelle)': 12,
+            '24 (Journalière - données horaires)': 24,
+            '168 (Hebdomadaire - données horaires)': 168,
+            'Personnalisée': 'custom'
+        }
+        
+        seasonal_choice = st.selectbox(
+            "Période saisonnière",
+            options=list(seasonal_options.keys()),
+            index=0,
+            help="Période pour l'analyse de saisonnalité"
+        )
+        
+        if seasonal_options[seasonal_choice] == 'custom':
+            custom_period = st.number_input(
+                "Période personnalisée",
+                min_value=2,
+                max_value=365,
+                value=12,
+                help="Entrez une période personnalisée"
+            )
+            SessionManager.update_config('seasonal_period', custom_period)
+        else:
+            SessionManager.update_config('seasonal_period', seasonal_options[seasonal_choice])
+        
+        st.divider()
+        
+        st.subheader("🔮 Prévision")
         
         horizon = st.number_input(
             "Horizon de prévision",

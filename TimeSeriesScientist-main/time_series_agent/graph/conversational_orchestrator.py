@@ -44,7 +44,7 @@ class ConversationalOrchestrator:
         
         # Initialize agent wrappers
         self.preprocess_wrapper = PreprocessAgentWrapper(self.config)
-        self.analysis_wrapper = None  # To be implemented
+        self.analysis_wrapper = AnalysisAgentWrapper(self.config)
         self.validation_wrapper = None  # To be implemented
         self.forecast_wrapper = None  # To be implemented
         self.report_wrapper = None  # To be implemented
@@ -220,11 +220,49 @@ class ConversationalOrchestrator:
         }
     
     def _handle_analysis(self) -> Dict[str, Any]:
-        """Handle analysis command (to be implemented)."""
-        return {
-            'status': 'info',
-            'message': "🚧 L'agent d'analyse sera connecté dans la prochaine étape."
-        }
+        """Handle the analysis command."""
+        logger.info("Starting statistical analysis...")
+        
+        # Check if preprocessing is complete
+        if 'preprocessed_data' not in st.session_state:
+            # Try to use original data if preprocessing was skipped
+            if st.session_state.data is None:
+                return {
+                    'status': 'error',
+                    'message': "❌ Aucune donnée disponible. Veuillez d'abord charger et prétraiter les données."
+                }
+            
+            # Use original data
+            data = st.session_state.data[[st.session_state.target_col]].copy()
+            data.rename(columns={st.session_state.target_col: 'value'}, inplace=True)
+        else:
+            data = st.session_state.preprocessed_data
+        
+        # Get configuration
+        seasonal_period = st.session_state.config.get('seasonal_period', 'auto')
+        
+        # Run analysis
+        result = self.analysis_wrapper.run(data, seasonal_period=seasonal_period)
+        
+        # Store result in session
+        SessionManager.store_result('analysis', result)
+        
+        # Update state
+        SessionManager.update_step('analysis_complete')
+        
+        if result['status'] == 'success':
+            return {
+                'status': 'success',
+                'message': result['summary'],
+                'visualizations': result.get('visualizations', {}),
+                'recommendations': result.get('recommendations', []),
+                'next_step': 'validation'
+            }
+        else:
+            return {
+                'status': 'error',
+                'message': result.get('summary', 'Erreur lors de l\'analyse')
+            }
     
     def _handle_validation(self) -> Dict[str, Any]:
         """Handle validation command (to be implemented)."""

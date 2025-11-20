@@ -66,7 +66,8 @@ class SessionManager:
                 'horizon': 96,
                 'input_length': 512,
                 'num_models': 3,
-                'confidence_level': 0.95
+                'confidence_level': 0.95,
+                'seasonal_period': 'auto'
             }
         
         # Session metadata

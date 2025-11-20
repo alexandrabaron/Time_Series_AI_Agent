@@ -22,6 +22,8 @@ from graph.agent_wrappers import (
     ReportAgentWrapper
 )
 from utils.session_manager import SessionManager
+from utils.local_llm import LocalLLM
+from utils.conversation_context import ConversationContextBuilder
 from config.default_config import DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,80 @@ class ConversationalOrchestrator:
         self.validation_wrapper = None  # To be implemented
         self.forecast_wrapper = None  # To be implemented
         self.report_wrapper = None  # To be implemented
+        
+        # Initialize Local LLM (Llama3 via Ollama)
+        # Using llama3:8b for faster responses (vs llama3:70b)
+        self.local_llm = LocalLLM(model="llama3:8b")
+        logger.info(f"Local LLM available: {self.local_llm.is_available()}")
+    
+    def handle_user_input(self, user_input: str) -> Dict[str, Any]:
+        """
+        Main entry point for user input.
+        Routes to command handler or question answering based on intent.
+        
+        Args:
+            user_input: The user's input text
+            
+        Returns:
+            Dictionary with status and message
+        """
+        logger.info(f"Processing user input: {user_input}")
+        
+        # Detect intent (command vs question)
+        intent = self.local_llm.detect_intent(user_input)
+        logger.info(f"Detected intent: {intent}")
+        
+        # Route based on intent
+        if intent == 'command':
+            # Try to extract and handle command
+            return self._handle_command_from_text(user_input)
+        elif intent == 'question':
+            # Answer the question using LLM with context
+            return self._answer_question(user_input)
+        else:
+            # Fallback: try both approaches or provide suggestions
+            return {
+                'status': 'info',
+                'message': f"🤔 Je n'ai pas bien compris votre demande : '{user_input}'\n\n💡 Vous pouvez :\n- Poser une question (ex: 'Quelle est la qualité de mes données ?')\n- Donner une commande (ex: 'Lance l'analyse')\n- Utiliser les boutons dans la sidebar"
+            }
+    
+    def _handle_command_from_text(self, text: str) -> Dict[str, Any]:
+        """
+        Extract and handle command from natural language text.
+        
+        Args:
+            text: User's command text
+            
+        Returns:
+            Result dictionary
+        """
+        text_lower = text.lower()
+        
+        # Preprocessing commands
+        if any(word in text_lower for word in ['prétraitement', 'pretraitement', 'nettoyer', 'nettoyage', 'clean']):
+            return self.handle_command('start_preprocessing')
+        
+        # Analysis commands
+        elif any(word in text_lower for word in ['analyse', 'analyser', 'statistical', 'statistique']):
+            return self.handle_command('start_analysis')
+        
+        # Validation commands
+        elif any(word in text_lower for word in ['validation', 'valider', 'modèle', 'model']):
+            return self.handle_command('start_validation')
+        
+        # Forecast commands
+        elif any(word in text_lower for word in ['prévision', 'prevision', 'forecast', 'prévoir', 'prevoir']):
+            return self.handle_command('start_forecast')
+        
+        # Report commands
+        elif any(word in text_lower for word in ['rapport', 'report', 'résumé', 'resume', 'summary']):
+            return self.handle_command('generate_report')
+        
+        else:
+            return {
+                'status': 'info',
+                'message': f"🤔 Commande non reconnue : '{text}'\n\n💡 Utilisez les boutons dans la sidebar pour naviguer."
+            }
     
     def handle_command(self, command: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -285,41 +361,174 @@ class ConversationalOrchestrator:
             'message': "🚧 L'agent de rapport sera connecté dans la prochaine étape."
         }
     
-    def answer_question(self, question: str, context: Dict[str, Any] = None) -> str:
+    def _answer_question(self, question: str) -> Dict[str, Any]:
         """
-        Answer a user question about the current state/data.
+        Answer a user question using Local LLM with context from session state.
         
         Args:
             question: User's question
-            context: Optional context
+            
+        Returns:
+            Dictionary with status and message
+        """
+        logger.info(f"Answering question: {question}")
+        
+        # Build context from session state
+        context = ConversationContextBuilder.build_context(st.session_state)
+        
+        # Check if LLM is available
+        if not self.local_llm.is_available():
+            # Fallback to hardcoded responses
+            return self._fallback_answer(question, context)
+        
+        # Use LLM to answer with context
+        try:
+            answer = self.local_llm.ask_with_context(
+                question=question,
+                context=context,
+                role="assistant expert en séries temporelles"
+            )
+            
+            return {
+                'status': 'success',
+                'message': answer
+            }
+            
+        except Exception as e:
+            logger.error(f"Error answering question with LLM: {e}")
+            return self._fallback_answer(question, context)
+    
+    def _fallback_answer(self, question: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Provide fallback answers when LLM is unavailable.
+        
+        Args:
+            question: User's question
+            context: Context dictionary
+            
+        Returns:
+            Dictionary with status and message
+        """
+        question_lower = question.lower()
+        
+        # Dataset questions
+        if 'qualité' in question_lower or 'quality' in question_lower:
+            if context.get('preprocessing', {}).get('quality_score'):
+                score = context['preprocessing']['quality_score']
+                return {
+                    'status': 'success',
+                    'message': f"📊 Score de qualité des données : **{score:.2f}/1.0**"
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information de qualité disponible. Veuillez d'abord lancer le prétraitement."
+            }
+        
+        # Missing values
+        elif 'manquant' in question_lower or 'missing' in question_lower:
+            if context.get('preprocessing', {}).get('missing_values'):
+                mv = context['preprocessing']['missing_values']
+                return {
+                    'status': 'success',
+                    'message': f"📊 Valeurs manquantes : **{mv['count']}** ({mv['percentage']:.2f}%)"
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information disponible. Veuillez d'abord lancer le prétraitement."
+            }
+        
+        # Outliers
+        elif 'outlier' in question_lower:
+            if context.get('preprocessing', {}).get('outliers'):
+                outliers = context['preprocessing']['outliers']
+                return {
+                    'status': 'success',
+                    'message': f"📊 Outliers détectés : **{outliers['count']}** ({outliers['percentage']:.2f}%)"
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information disponible. Veuillez d'abord lancer le prétraitement."
+            }
+        
+        # Trend
+        elif 'tendance' in question_lower or 'trend' in question_lower:
+            if context.get('analysis', {}).get('trend'):
+                trend = context['analysis']['trend']
+                return {
+                    'status': 'success',
+                    'message': f"📈 Tendance : **{trend['direction']}** (force: {trend['strength']})"
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information disponible. Veuillez d'abord lancer l'analyse statistique."
+            }
+        
+        # Seasonality
+        elif 'saisonnal' in question_lower or 'seasonal' in question_lower:
+            if context.get('analysis', {}).get('seasonality'):
+                seasonality = context['analysis']['seasonality']
+                if seasonality['detected']:
+                    return {
+                        'status': 'success',
+                        'message': f"📊 Saisonnalité détectée : Oui\n- Période : **{seasonality['period']}**\n- Force : **{seasonality['strength_label']}**"
+                    }
+                else:
+                    return {
+                        'status': 'success',
+                        'message': "📊 Aucune saisonnalité détectée dans vos données."
+                    }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information disponible. Veuillez d'abord lancer l'analyse statistique."
+            }
+        
+        # Stationarity
+        elif 'stationnaire' in question_lower or 'stationarity' in question_lower:
+            if context.get('analysis', {}).get('stationarity'):
+                stationarity = context['analysis']['stationarity']
+                return {
+                    'status': 'success',
+                    'message': f"📊 Stationnarité : **{stationarity['conclusion']}**\n- Différenciation nécessaire : {'Oui' if stationarity['needs_differencing'] else 'Non'}"
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune information disponible. Veuillez d'abord lancer l'analyse statistique."
+            }
+        
+        # Model recommendations
+        elif 'modèle' in question_lower or 'model' in question_lower or 'recommand' in question_lower:
+            if context.get('recommendations'):
+                recs = context['recommendations'][:3]
+                message = "💡 **Modèles recommandés** :\n\n"
+                for i, rec in enumerate(recs, 1):
+                    message += f"{i}. **{rec.get('model', 'N/A')}** : {rec.get('reason', 'N/A')}\n"
+                return {
+                    'status': 'success',
+                    'message': message
+                }
+            return {
+                'status': 'info',
+                'message': "❌ Aucune recommandation disponible. Veuillez d'abord lancer l'analyse statistique."
+            }
+        
+        # Default
+        else:
+            return {
+                'status': 'info',
+                'message': f"🤔 Je n'ai pas pu répondre à votre question : '{question}'\n\n💡 **Ollama n'est pas disponible**. Pour activer les réponses intelligentes, assurez-vous qu'Ollama est en cours d'exécution.\n\nEn attendant, je peux répondre à des questions simples sur :\n- La qualité des données\n- Les valeurs manquantes\n- Les outliers\n- La tendance\n- La saisonnalité\n- La stationnarité\n- Les recommandations de modèles"
+            }
+    
+    def answer_question(self, question: str, context: Dict[str, Any] = None) -> str:
+        """
+        Legacy method for compatibility. Use _answer_question() instead.
+        
+        Args:
+            question: User's question
+            context: Optional context (ignored, uses session state)
             
         Returns:
             Answer string
         """
-        # For now, provide simple answers (LLM integration in future)
-        question_lower = question.lower()
-        
-        if 'qualité' in question_lower or 'quality' in question_lower:
-            analysis = SessionManager.get_result('preprocess_analysis')
-            if analysis:
-                quality = analysis['details']['quality']
-                return f"Score de qualité des données : **{quality['score']:.2f}/1.0**"
-            return "Veuillez d'abord lancer l'analyse des données."
-        
-        elif 'manquant' in question_lower or 'missing' in question_lower:
-            analysis = SessionManager.get_result('preprocess_analysis')
-            if analysis:
-                missing = analysis['details']['missing_values']
-                return f"Valeurs manquantes : **{missing['count']}** ({missing['percentage']:.2f}%)"
-            return "Veuillez d'abord lancer l'analyse des données."
-        
-        elif 'outlier' in question_lower:
-            analysis = SessionManager.get_result('preprocess_analysis')
-            if analysis:
-                outliers = analysis['details']['outliers']
-                return f"Outliers détectés : **{outliers['count']}** ({outliers['percentage']:.2f}%)"
-            return "Veuillez d'abord lancer l'analyse des données."
-        
-        else:
-            return "🤔 Je n'ai pas compris votre question. Pouvez-vous reformuler ?"
+        result = self._answer_question(question)
+        return result.get('message', 'Erreur lors du traitement de la question.')
 

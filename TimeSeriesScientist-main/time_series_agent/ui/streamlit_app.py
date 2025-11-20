@@ -354,14 +354,11 @@ def main():
         user_input = display_chat_input()
         
         if user_input:
-            # For now, just echo back (will be replaced with orchestrator logic)
-            response = f"🤖 Vous avez dit : '{user_input}'\n\n*Note: L'orchestrateur conversationnel sera connecté dans la prochaine étape.*"
-            st.session_state.messages.append({
-                'role': 'assistant',
-                'content': response,
-                'timestamp': '',
-                'metadata': {}
-            })
+            # Route to orchestrator for intelligent handling
+            result = st.session_state.orchestrator.handle_user_input(user_input)
+            
+            # Add assistant response
+            add_assistant_message(result.get('message', 'Erreur lors du traitement de votre demande.'))
             st.rerun()
     
     with col2:
